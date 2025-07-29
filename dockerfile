@@ -1,77 +1,38 @@
-#stage1: build stage:- install dependencies and download source code
-FROM php:8.1-apache AS builder
+FROM ubuntu:22.04
 
-#set non-interactive mode for package installation
-ENV DEBIAN_FRONTEND = noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 
-#install system dependencies
+# Install Apache, PHP, and dependencies
+RUN apt-get update && \
+    apt-get install -y apache2 mysql-client php php-mysql php-snmp php-gd \
+    php-xml php-mbstring php-curl php-bcmath php-opcache php-pear \
+    snmp fping graphviz rrdtool whois ipmitool \
+    python3 python3-pymysql python3-mysqldb wget unzip git cron && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && apt-get install -y -- no-install-recommends\
-apt-utils\wget\fping\snmp\snmpd\
-rrdtool\whois\mtr-tiny\ipmitool\
-graphviz\imagemagick\mariadb-client\libapache2-mod-php\php-mysql\
-php-gd\php-json\php-bcmath\php-mbstring\php-opache\php-curl\php-pear\
-python3\python3-mysqldb\python3-pymysql\&& rm -rf /var/lib/apt/lists/*
+# Set up the web root
+WORKDIR /opt/observium
 
-#Install Observium CE
-WORKDIR /opt
-RUN wget http://www.observium.org/observium-community-latest.tar.gz && \
-tar -zxvf observium-community-latest.tar.gz && \
-mv observium-community-* observium && \
-rm observium-community-latest.tar.gz
+# Copy the application (assumes build context is repo root)
+COPY . /opt/observium
 
-#stage2: Final Stage:- creating a lean production image
-FROM php:8.1-apache
+# Set permissions for application files
+RUN chown -R www-data:www-data /opt/observium
 
-ENV DEBIAN_FRONTEND = noninteractive
+# Make scripts executable
+RUN chmod +x scripts/*.sh scripts/*.php
 
-#copy only necessary files from the builder stage
+# Configure Apache
+COPY observium.conf /etc/apache2/sites-available/000-default.conf
+RUN a2enmod rewrite && \
+    sed -i 's/display_errors = Off/display_errors = On/' /etc/php/8.1/apache2/php.ini && \
+    sed -i 's/error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT/error_reporting = E_ALL/' /etc/php/8.1/apache2/php.ini
 
-COPY --from=builder /usr/bin/fping /usr/bin/fping
-COPY --from=builder /usr/bin/snmpget /usr/bin/snmpget
-COPY --from=builder /usr/bin/snmpwalk /usr/bin/snmpwalk
-COPY --from=builder /usr/bin/snmpbulkwalk /usr/bin/snmpbulkwalk
-COPY --from=builder /usr/bin/rrdtool /usr/bin/rrdtool
-COPY --from=builder /usr/bin/mysql /usr/bin/mysql
-COPY --from=builder /usr/bin/python3 /usr/bin/python3
-COPY --from=builder /usr/lib/python3/dist-packages /usr/lib/python3/dist-packages
-COPY --from=builder /usr/local/lib/python3.10/dist-packages /usr/local/lib/python3.10/dist-packages
+# Expose Apache
+EXPOSE 80
 
-#install minimal runtime packages
+# Set up entrypoint script for Apache and cron
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
-RUN apt-get update && apt-get install -y --no-install-recommends\libmysqlclient21\librrd8\libsnmp40 \
-&&rm -rf /var/lib/apt/lists/*
-
-#Configure Apache
-COPY <<EOF /etc/apache2/sites-available/000-default.Configure
-<virtualHost *:80>
-    DocumentRoot /opt/observium/html
-    <Directory /opt/observium/html>
-        Options Indexes FollowSymLinks
-        AllowOverride All
-        Require all granted
-    </Directory>
-    ErrorLog ${APACHE_LOG_DIR}/error.log
-    CustomLog \${APACHE_LOG_DIR}/access.log combined
-    <virtualHost>
-    EOF
-
-    RUN a2enmod rewrite
-
-    #Create directores for persistent data 
-    RUN mkdir -p /opt/observium/rrd /opt/observium/logs && \
-    chown -R www-data:www-data /opt/observium/rrd /opt/observium/logs
-
-    # Copy custom entrypoitn script
-    COPY docker-entrypoitn.sh /usr/locval/bin
-    RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
-    # Expose Apache port 80
-
-    EXPOSE 80
-
-    # Set entrypoint
-    ENTRYPOINT ["docker-entrypoitn.sh"]
-    CMD ["apache2-foreground"]
-
-
+ENTRYPOINT ["/docker-entrypoint.sh"]

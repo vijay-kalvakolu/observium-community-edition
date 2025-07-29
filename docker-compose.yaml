@@ -1,0 +1,46 @@
+version: '3.7'
+
+services:
+  observium:
+    image: vijaydoc24/observium:1.0.0 # Replace with your Docker Hub username and desired tag
+    build: .
+    container_name: observium
+    ports:
+      - "8080:80"
+    volumes:
+      - observium_rrd:/opt/observium/rrd
+      - observium_logs:/opt/observium/logs
+    environment:
+      - TZ=${TZ:-UTC}
+      - DB_HOST=${DB_HOST:-db}
+      - DB_USER=${DB_USER:-observium}
+      - DB_PASSWORD=${DB_PASSWORD:-observium}
+      - DB_NAME=${DB_DATABASE:-observium}
+      - OBSERVIUM_ADMIN_USER=${OBSERVIUM_ADMIN_USER:-admin}
+      - OBSERVIUM_ADMIN_PASS=${OBSERVIUM_ADMIN_PASS:-password}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mariadb:10.11
+    container_name: observium_db
+    restart: always
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    environment:
+
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_DATABASE}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+
+volumes:
+  db_data:
+  observium_rrd:
+  observium_logs:

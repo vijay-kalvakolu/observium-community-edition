@@ -1,3 +1,5 @@
-/logs/
-/rrd/
-/config.php
+# Ignore environment variables and secrets
+.env
+.git
+node_modules
+.log

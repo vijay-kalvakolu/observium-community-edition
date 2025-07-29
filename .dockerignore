@@ -1,0 +1,7 @@
+.git
+.gitignore
+docker-compose.yaml
+dockerfile
+README.md
+*.log
+observium_data/
